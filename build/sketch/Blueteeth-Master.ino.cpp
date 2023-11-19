@@ -20,29 +20,28 @@ BlueteethBaseStack * internalNetworkStackPtr = &internalNetworkStack; //Need poi
 
 uint32_t streamTime; //TEMPORARY DEBUG VARIABLE (REMOVE LATER)
 
-// callback 
-#line 22 "C:\\Users\\ztzac\\Documents\\GitHub\\Blueteeth-Master\\Blueteeth-Master.ino"
-int32_t get_sound_data(Frame *data, int32_t frameCount);
-#line 29 "C:\\Users\\ztzac\\Documents\\GitHub\\Blueteeth-Master\\Blueteeth-Master.ino"
+#line 21 "C:\\Users\\ztzac\\Documents\\GitHub\\Blueteeth-Master\\Blueteeth-Master.ino"
+void a2dpSinkDataReceived(const uint8_t *data, uint32_t length);
+#line 28 "C:\\Users\\ztzac\\Documents\\GitHub\\Blueteeth-Master\\Blueteeth-Master.ino"
 void setup();
-#line 67 "C:\\Users\\ztzac\\Documents\\GitHub\\Blueteeth-Master\\Blueteeth-Master.ino"
+#line 69 "C:\\Users\\ztzac\\Documents\\GitHub\\Blueteeth-Master\\Blueteeth-Master.ino"
 void loop();
-#line 74 "C:\\Users\\ztzac\\Documents\\GitHub\\Blueteeth-Master\\Blueteeth-Master.ino"
+#line 76 "C:\\Users\\ztzac\\Documents\\GitHub\\Blueteeth-Master\\Blueteeth-Master.ino"
 void ringTokenWatchdogTask(void * params);
-#line 86 "C:\\Users\\ztzac\\Documents\\GitHub\\Blueteeth-Master\\Blueteeth-Master.ino"
+#line 88 "C:\\Users\\ztzac\\Documents\\GitHub\\Blueteeth-Master\\Blueteeth-Master.ino"
 void int2Bytes(uint32_t integer, uint8_t * byteArray);
-#line 92 "C:\\Users\\ztzac\\Documents\\GitHub\\Blueteeth-Master\\Blueteeth-Master.ino"
+#line 94 "C:\\Users\\ztzac\\Documents\\GitHub\\Blueteeth-Master\\Blueteeth-Master.ino"
 uint32_t bytes2Int(uint8_t * byteArray);
-#line 103 "C:\\Users\\ztzac\\Documents\\GitHub\\Blueteeth-Master\\Blueteeth-Master.ino"
+#line 105 "C:\\Users\\ztzac\\Documents\\GitHub\\Blueteeth-Master\\Blueteeth-Master.ino"
 void packetReceptionTask(void * pvParams);
-#line 156 "C:\\Users\\ztzac\\Documents\\GitHub\\Blueteeth-Master\\Blueteeth-Master.ino"
+#line 158 "C:\\Users\\ztzac\\Documents\\GitHub\\Blueteeth-Master\\Blueteeth-Master.ino"
 void terminalInputTask(void * params);
-#line 22 "C:\\Users\\ztzac\\Documents\\GitHub\\Blueteeth-Master\\Blueteeth-Master.ino"
-int32_t get_sound_data(Frame *data, int32_t frameCount) {
-    // generate your sound data 
-    // return the effective length (in frames) of the generated sound  (which usually is identical with the requested len)
-    // 1 frame is 2 channels * 2 bytes = 4 bytes
-    return frameCount;
+#line 21 "C:\\Users\\ztzac\\Documents\\GitHub\\Blueteeth-Master\\Blueteeth-Master.ino"
+void a2dpSinkDataReceived(const uint8_t *data, uint32_t length){
+  Serial.print("BLUETOOTH DATA RECEIVED!");
+  for (int i = 0; i < length; i++){
+    internalNetworkStack.streamData(*(data + i));
+  }
 }
 
 void setup() {
@@ -62,25 +61,28 @@ void setup() {
   //Create tasks
   xTaskCreate(terminalInputTask, // Task function
   "UART TERMINAL INPUT", // Task name
-  4096, // Stack size 
+  4096, // Stack depth
   NULL, 
   1, // Priority
   &terminalInputTaskHandle); // Task handler
   
   xTaskCreate(ringTokenWatchdogTask, // Task function
   "RING TOKEN WATCHDOG", // Task name
-  4096, // Stack size 
+  4096, // Stack depth 
   NULL, 
   1, // Priority
   &ringTokenWatchdogTaskHandle); // Task handler
 
   xTaskCreate(packetReceptionTask, // Task function
   "PACKET RECEPTION HANDLER", // Task name
-  4096, // Stack size 
+  4096, // Stack depth 
   NULL, 
   1, // Priority
   &packetReceptionTaskHandle); // Task handler
 
+  a2dpSink.set_stream_reader(a2dpSinkDataReceived);
+  a2dpSink.set_auto_reconnect(false);
+  a2dpSink.start("Blueteeth Sink"); //Begin advertising
 }
 
 void loop() {

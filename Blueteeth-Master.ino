@@ -18,12 +18,11 @@ BlueteethBaseStack * internalNetworkStackPtr = &internalNetworkStack; //Need poi
 
 uint32_t streamTime; //TEMPORARY DEBUG VARIABLE (REMOVE LATER)
 
-// callback 
-int32_t get_sound_data(Frame *data, int32_t frameCount) {
-    // generate your sound data 
-    // return the effective length (in frames) of the generated sound  (which usually is identical with the requested len)
-    // 1 frame is 2 channels * 2 bytes = 4 bytes
-    return frameCount;
+void a2dpSinkDataReceived(const uint8_t *data, uint32_t length){
+  Serial.print("BLUETOOTH DATA RECEIVED!");
+  for (int i = 0; i < length; i++){
+    internalNetworkStack.streamData(*(data + i));
+  }
 }
 
 void setup() {
@@ -43,25 +42,28 @@ void setup() {
   //Create tasks
   xTaskCreate(terminalInputTask, // Task function
   "UART TERMINAL INPUT", // Task name
-  4096, // Stack size 
+  4096, // Stack depth
   NULL, 
   1, // Priority
   &terminalInputTaskHandle); // Task handler
   
   xTaskCreate(ringTokenWatchdogTask, // Task function
   "RING TOKEN WATCHDOG", // Task name
-  4096, // Stack size 
+  4096, // Stack depth 
   NULL, 
   1, // Priority
   &ringTokenWatchdogTaskHandle); // Task handler
 
   xTaskCreate(packetReceptionTask, // Task function
   "PACKET RECEPTION HANDLER", // Task name
-  4096, // Stack size 
+  4096, // Stack depth 
   NULL, 
   1, // Priority
   &packetReceptionTaskHandle); // Task handler
 
+  a2dpSink.set_stream_reader(a2dpSinkDataReceived);
+  a2dpSink.set_auto_reconnect(false);
+  a2dpSink.start("Blueteeth Sink"); //Begin advertising
 }
 
 void loop() {
