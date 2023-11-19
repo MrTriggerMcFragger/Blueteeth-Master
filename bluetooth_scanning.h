@@ -7,7 +7,7 @@ extern int discoveryIdx;
 
 class MyAdvertisedDeviceCallbacks: public BLEAdvertisedDeviceCallbacks {
     void onResult(BLEAdvertisedDevice advertisedDevice) {
-      Serial.print("\033[F"); //go up one line
+      // Serial.print("\033[F"); //go up one line
       Serial.print("\033[2K"); //clear line
       Serial.printf("Device [%d] : %s \n\r", discoveryIdx++, advertisedDevice.getName().c_str());
       // Serial.printf("Advertised Device: %s \n\r", advertisedDevice.toString().c_str());

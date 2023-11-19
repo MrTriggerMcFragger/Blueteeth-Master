@@ -18,20 +18,26 @@ BluetoothA2DPSink a2dpSink;
 BlueteethMasterStack internalNetworkStack(10, &packetReceptionTaskHandle, &Serial2, &Serial1); //Serial1 = Data Plane, Serial2 = Control Plane
 BlueteethBaseStack * internalNetworkStackPtr = &internalNetworkStack; //Need pointer for run-time polymorphism
 
+uint32_t streamTime; //TEMPORARY DEBUG VARIABLE (REMOVE LATER)
+
 // callback 
-#line 20 "C:\\Users\\ztzac\\Documents\\GitHub\\Blueteeth-Master\\Blueteeth-Master.ino"
+#line 22 "C:\\Users\\ztzac\\Documents\\GitHub\\Blueteeth-Master\\Blueteeth-Master.ino"
 int32_t get_sound_data(Frame *data, int32_t frameCount);
-#line 27 "C:\\Users\\ztzac\\Documents\\GitHub\\Blueteeth-Master\\Blueteeth-Master.ino"
+#line 29 "C:\\Users\\ztzac\\Documents\\GitHub\\Blueteeth-Master\\Blueteeth-Master.ino"
 void setup();
-#line 65 "C:\\Users\\ztzac\\Documents\\GitHub\\Blueteeth-Master\\Blueteeth-Master.ino"
+#line 67 "C:\\Users\\ztzac\\Documents\\GitHub\\Blueteeth-Master\\Blueteeth-Master.ino"
 void loop();
-#line 73 "C:\\Users\\ztzac\\Documents\\GitHub\\Blueteeth-Master\\Blueteeth-Master.ino"
+#line 74 "C:\\Users\\ztzac\\Documents\\GitHub\\Blueteeth-Master\\Blueteeth-Master.ino"
 void ringTokenWatchdogTask(void * params);
-#line 85 "C:\\Users\\ztzac\\Documents\\GitHub\\Blueteeth-Master\\Blueteeth-Master.ino"
+#line 86 "C:\\Users\\ztzac\\Documents\\GitHub\\Blueteeth-Master\\Blueteeth-Master.ino"
+void int2Bytes(uint32_t integer, uint8_t * byteArray);
+#line 92 "C:\\Users\\ztzac\\Documents\\GitHub\\Blueteeth-Master\\Blueteeth-Master.ino"
+uint32_t bytes2Int(uint8_t * byteArray);
+#line 103 "C:\\Users\\ztzac\\Documents\\GitHub\\Blueteeth-Master\\Blueteeth-Master.ino"
 void packetReceptionTask(void * pvParams);
-#line 135 "C:\\Users\\ztzac\\Documents\\GitHub\\Blueteeth-Master\\Blueteeth-Master.ino"
+#line 156 "C:\\Users\\ztzac\\Documents\\GitHub\\Blueteeth-Master\\Blueteeth-Master.ino"
 void terminalInputTask(void * params);
-#line 20 "C:\\Users\\ztzac\\Documents\\GitHub\\Blueteeth-Master\\Blueteeth-Master.ino"
+#line 22 "C:\\Users\\ztzac\\Documents\\GitHub\\Blueteeth-Master\\Blueteeth-Master.ino"
 int32_t get_sound_data(Frame *data, int32_t frameCount) {
     // generate your sound data 
     // return the effective length (in frames) of the generated sound  (which usually is identical with the requested len)
@@ -81,13 +87,12 @@ void loop() {
 }
 
 
-//Name: ringTokenWatchdogTask
-//Purpose: Take in user inputs and handle actions.
-//Inputs: None
-//Outputs: None
+/*  Checks to see if the ring token is still in the network. If it isn't detected after some period, generates a new token.
+*
+*/  
 void ringTokenWatchdogTask(void * params) {
   while (1){
-    vTaskDelay(3000);
+    vTaskDelay(RING_TOKEN_GENERATION_DELAY_MS);
     if (internalNetworkStack.getTokenRxFlag() == false){
       Serial.print("Generating a new token.\n\r"); //DEBUG STATEMENT
       // internalNetworkStack.tokenReceived();
@@ -97,6 +102,23 @@ void ringTokenWatchdogTask(void * params) {
   }
 }
 
+inline void int2Bytes(uint32_t integer, uint8_t * byteArray){
+  for (int offset = 0; offset < 32; offset += 8){
+    byteArray[offset/8] = integer >> offset; //assignment will truncate so only first 8 bits are assigned
+  }
+}
+
+inline uint32_t bytes2Int(uint8_t * byteArray){
+  uint32_t integer = 0;
+  for (int offset = 0; offset < 32; offset += 8){
+    integer += byteArray[offset/8] << offset; 
+  }
+  return integer;
+}
+
+/*  Task that runs when a new Blueteeth packet is received. 
+*
+*/  
 void packetReceptionTask (void * pvParams){
   while(1){
     
@@ -108,6 +130,10 @@ void packetReceptionTask (void * pvParams){
       case PING:
         Serial.print("Ping packet type received.\n\r"); //DEBUG STATEMENT
         Serial.printf("Response from address %s\n\r", packetReceived.payload);
+        break;
+      
+      case STREAM_RESULTS:
+        Serial.printf("Stream results from ADDR%d: Checksum = %d, Time = %d\n\r", packetReceived.srcAddr, bytes2Int(packetReceived.payload), bytes2Int(packetReceived.payload + 4));
         break;
 
       default:
@@ -143,10 +169,9 @@ void inline printBuffer(int endPos){
   Serial.print("\0338"); //restore cursor position
 }
 
-//Name: terminalInputTask
-//Purpose: Take in user inputs and handle actions.
-//Inputs: None
-//Outputs: None
+/*  Take in user inputs and handle pre-defined commands.
+*
+*/
 void terminalInputTask(void * params) {
 
   clear_buffer(input_buffer, sizeof(input_buffer));
@@ -190,7 +215,7 @@ void terminalInputTask(void * params) {
             Serial.print("\0332K"); //clear line
             Serial.print("*** SCAN RESULTS START ***");
             Serial.print("\0338"); //restore cursor
-            Serial.print("*** SCAN RESULTS END   ***");
+            Serial.print("*** SCAN RESULTS END   ***\n\r");
 
             break;
 
@@ -204,7 +229,7 @@ void terminalInputTask(void * params) {
             }
             break;
 
-          case STREAM:
+          case STREAM : {
             for (int j = 0; j < 156; j++){
               for (int i = 1; i <= 255; i++){
                 internalNetworkStack.streamData(i);
@@ -213,7 +238,12 @@ void terminalInputTask(void * params) {
             for (int i = 0; i < 220; i++){
               internalNetworkStack.streamData(i);
             }
+
+            BlueteethPacket streamRequest(false, internalNetworkStack.getAddress(), 254);
+            streamRequest.type = STREAM;
+            internalNetworkStack.queuePacket(true, streamRequest);
             break;
+          }
             
           default:
             break;

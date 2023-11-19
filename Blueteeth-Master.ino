@@ -16,6 +16,8 @@ BluetoothA2DPSink a2dpSink;
 BlueteethMasterStack internalNetworkStack(10, &packetReceptionTaskHandle, &Serial2, &Serial1); //Serial1 = Data Plane, Serial2 = Control Plane
 BlueteethBaseStack * internalNetworkStackPtr = &internalNetworkStack; //Need pointer for run-time polymorphism
 
+uint32_t streamTime; //TEMPORARY DEBUG VARIABLE (REMOVE LATER)
+
 // callback 
 int32_t get_sound_data(Frame *data, int32_t frameCount) {
     // generate your sound data 
@@ -71,7 +73,7 @@ void loop() {
 */  
 void ringTokenWatchdogTask(void * params) {
   while (1){
-    vTaskDelay(3000);
+    vTaskDelay(RING_TOKEN_GENERATION_DELAY_MS);
     if (internalNetworkStack.getTokenRxFlag() == false){
       Serial.print("Generating a new token.\n\r"); //DEBUG STATEMENT
       // internalNetworkStack.tokenReceived();
@@ -79,6 +81,20 @@ void ringTokenWatchdogTask(void * params) {
     }
     internalNetworkStack.resetTokenRxFlag(); 
   }
+}
+
+inline void int2Bytes(uint32_t integer, uint8_t * byteArray){
+  for (int offset = 0; offset < 32; offset += 8){
+    byteArray[offset/8] = integer >> offset; //assignment will truncate so only first 8 bits are assigned
+  }
+}
+
+inline uint32_t bytes2Int(uint8_t * byteArray){
+  uint32_t integer = 0;
+  for (int offset = 0; offset < 32; offset += 8){
+    integer += byteArray[offset/8] << offset; 
+  }
+  return integer;
 }
 
 /*  Task that runs when a new Blueteeth packet is received. 
@@ -95,6 +111,10 @@ void packetReceptionTask (void * pvParams){
       case PING:
         Serial.print("Ping packet type received.\n\r"); //DEBUG STATEMENT
         Serial.printf("Response from address %s\n\r", packetReceived.payload);
+        break;
+      
+      case STREAM_RESULTS:
+        Serial.printf("Stream results from ADDR%d: Checksum = %d, Time = %d\n\r", packetReceived.srcAddr, bytes2Int(packetReceived.payload), bytes2Int(packetReceived.payload + 4));
         break;
 
       default:
@@ -176,7 +196,7 @@ void terminalInputTask(void * params) {
             Serial.print("\0332K"); //clear line
             Serial.print("*** SCAN RESULTS START ***");
             Serial.print("\0338"); //restore cursor
-            Serial.print("*** SCAN RESULTS END   ***");
+            Serial.print("*** SCAN RESULTS END   ***\n\r");
 
             break;
 
@@ -190,7 +210,7 @@ void terminalInputTask(void * params) {
             }
             break;
 
-          case STREAM:
+          case STREAM : {
             for (int j = 0; j < 156; j++){
               for (int i = 1; i <= 255; i++){
                 internalNetworkStack.streamData(i);
@@ -199,7 +219,12 @@ void terminalInputTask(void * params) {
             for (int i = 0; i < 220; i++){
               internalNetworkStack.streamData(i);
             }
+
+            BlueteethPacket streamRequest(false, internalNetworkStack.getAddress(), 254);
+            streamRequest.type = STREAM;
+            internalNetworkStack.queuePacket(true, streamRequest);
             break;
+          }
             
           default:
             break;
