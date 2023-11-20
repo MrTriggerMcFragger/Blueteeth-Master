@@ -19,7 +19,7 @@ BlueteethBaseStack * internalNetworkStackPtr = &internalNetworkStack; //Need poi
 uint32_t streamTime; //TEMPORARY DEBUG VARIABLE (REMOVE LATER)
 
 void a2dpSinkDataReceived(const uint8_t *data, uint32_t length){
-  Serial.print("BLUETOOTH DATA RECEIVED!");
+  // Serial.print("BLUETOOTH DATA RECEIVED!");
   for (int i = 0; i < length; i++){
     internalNetworkStack.streamData(*(data + i));
   }
@@ -34,7 +34,7 @@ void setup() {
   internalNetworkStack.begin();
   
   //Setup Peripherals
-  pBLEScan = bleScanSetup();
+  // pBLEScan = bleScanSetup();
 
   //State variable initialization
   terminalParameters.scanIdx = -1;
