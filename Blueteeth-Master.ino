@@ -18,6 +18,11 @@ BlueteethBaseStack * internalNetworkStackPtr = &internalNetworkStack; //Need poi
 
 uint32_t streamTime; //TEMPORARY DEBUG VARIABLE (REMOVE LATER)
 
+/*  Callback for when data is received from A2DP BT stream
+*   
+*   @data - Pointer to an array with the individual bytes received.
+*   @length - The number of bytes received.
+*/ 
 void a2dpSinkDataReceived(const uint8_t *data, uint32_t length){
   // Serial.print("BLUETOOTH DATA RECEIVED!");
   internalNetworkStack.streamData(data, length);
@@ -83,12 +88,23 @@ void ringTokenWatchdogTask(void * params) {
   }
 }
 
+/*  Gets individual bytes of a 32 bit integer
+*   
+*   @integer - the integer being analyzed
+*   @byteArray - array containing 4 bytes corresponding to a 32 bit integer
+*   @return - the resulting integer
+*/  
 inline void int2Bytes(uint32_t integer, uint8_t * byteArray){
   for (int offset = 0; offset < 32; offset += 8){
     byteArray[offset/8] = integer >> offset; //assignment will truncate so only first 8 bits are assigned
   }
 }
 
+/*  Unpacks byte array into a 32 bit integer
+*   
+*   @byteArray - array containing 4 bytes corresponding to a 32 bit integer
+*   @return - the resulting integer
+*/  
 inline uint32_t bytes2Int(uint8_t * byteArray){
   uint32_t integer = 0;
   for (int offset = 0; offset < 32; offset += 8){
@@ -125,6 +141,10 @@ void packetReceptionTask (void * pvParams){
   }
 }
 
+/*  Prints all characters in a character buffer
+*
+*   @endPos - last buffer position that should be printed
+*/ 
 void inline printBuffer(int endPos){
 
   Serial.print("\0337"); //save cursor positon
