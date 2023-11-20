@@ -50,6 +50,10 @@ PacketType argument_mapping(char * arguments[MAX_ARGS], uint8_t num_args, termin
       return CONNECT;
     }
 
+    else if (0 == strcmp(arguments[0], "disconnect")){ 
+      return DISCONNECT;
+    }
+
     else if (0 == strcmp(arguments[0], "init")){ 
       format_terminal_for_new_entry(1);
       Serial.print("Re-initializing\n\r");

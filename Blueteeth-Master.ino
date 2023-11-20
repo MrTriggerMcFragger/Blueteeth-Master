@@ -187,6 +187,12 @@ void terminalInputTask(void * params) {
             internalNetworkStack.queuePacket(1, newPacket);
             break;
           
+          case DISCONNECT:
+            newPacket.dstAddr = 1;
+            newPacket.type = DISCONNECT;
+            internalNetworkStack.queuePacket(1, newPacket);
+            break;
+
           case PING:
             newPacket.type = PING;
             internalNetworkStack.queuePacket(1, newPacket);
