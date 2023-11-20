@@ -22,26 +22,24 @@ uint32_t streamTime; //TEMPORARY DEBUG VARIABLE (REMOVE LATER)
 
 #line 21 "C:\\Users\\ztzac\\Documents\\GitHub\\Blueteeth-Master\\Blueteeth-Master.ino"
 void a2dpSinkDataReceived(const uint8_t *data, uint32_t length);
-#line 28 "C:\\Users\\ztzac\\Documents\\GitHub\\Blueteeth-Master\\Blueteeth-Master.ino"
+#line 26 "C:\\Users\\ztzac\\Documents\\GitHub\\Blueteeth-Master\\Blueteeth-Master.ino"
 void setup();
-#line 69 "C:\\Users\\ztzac\\Documents\\GitHub\\Blueteeth-Master\\Blueteeth-Master.ino"
+#line 67 "C:\\Users\\ztzac\\Documents\\GitHub\\Blueteeth-Master\\Blueteeth-Master.ino"
 void loop();
-#line 76 "C:\\Users\\ztzac\\Documents\\GitHub\\Blueteeth-Master\\Blueteeth-Master.ino"
+#line 74 "C:\\Users\\ztzac\\Documents\\GitHub\\Blueteeth-Master\\Blueteeth-Master.ino"
 void ringTokenWatchdogTask(void * params);
-#line 88 "C:\\Users\\ztzac\\Documents\\GitHub\\Blueteeth-Master\\Blueteeth-Master.ino"
+#line 86 "C:\\Users\\ztzac\\Documents\\GitHub\\Blueteeth-Master\\Blueteeth-Master.ino"
 void int2Bytes(uint32_t integer, uint8_t * byteArray);
-#line 94 "C:\\Users\\ztzac\\Documents\\GitHub\\Blueteeth-Master\\Blueteeth-Master.ino"
+#line 92 "C:\\Users\\ztzac\\Documents\\GitHub\\Blueteeth-Master\\Blueteeth-Master.ino"
 uint32_t bytes2Int(uint8_t * byteArray);
-#line 105 "C:\\Users\\ztzac\\Documents\\GitHub\\Blueteeth-Master\\Blueteeth-Master.ino"
+#line 103 "C:\\Users\\ztzac\\Documents\\GitHub\\Blueteeth-Master\\Blueteeth-Master.ino"
 void packetReceptionTask(void * pvParams);
-#line 158 "C:\\Users\\ztzac\\Documents\\GitHub\\Blueteeth-Master\\Blueteeth-Master.ino"
+#line 156 "C:\\Users\\ztzac\\Documents\\GitHub\\Blueteeth-Master\\Blueteeth-Master.ino"
 void terminalInputTask(void * params);
 #line 21 "C:\\Users\\ztzac\\Documents\\GitHub\\Blueteeth-Master\\Blueteeth-Master.ino"
 void a2dpSinkDataReceived(const uint8_t *data, uint32_t length){
   // Serial.print("BLUETOOTH DATA RECEIVED!");
-  for (int i = 0; i < length; i++){
-    internalNetworkStack.streamData(*(data + i));
-  }
+  internalNetworkStack.streamData(data, length);
 }
 
 void setup() {
@@ -200,8 +198,23 @@ void terminalInputTask(void * params) {
         BlueteethPacket newPacket (false, internalNetworkStack.getAddress(), 254); //Need to declare prior to switch statement to avoid "crosses initilization" error.
 
         switch ( handle_input(input_buffer, terminalParameters) ){
+          
+          case CONNECT:
+            newPacket.dstAddr = 1;
+            newPacket.type = CONNECT;
+            sprintf((char *) newPacket.payload, "Wireless Speaker");
+            internalNetworkStack.queuePacket(1, newPacket);
+            break;
+          
           case PING:
             newPacket.type = PING;
+            internalNetworkStack.queuePacket(1, newPacket);
+            break;
+
+          case INITIALIZAITON:
+            newPacket.dstAddr = 255;
+            newPacket.type = INITIALIZAITON;
+            newPacket.payload[0] = 1;
             internalNetworkStack.queuePacket(1, newPacket);
             break;
 
@@ -232,15 +245,22 @@ void terminalInputTask(void * params) {
             break;
 
           case STREAM : {
-            for (int j = 0; j < 156; j++){
-              for (int i = 1; i <= 255; i++){
-                internalNetworkStack.streamData(i);
-              }
+
+            uint32_t t = millis();
+
+            uint8_t streamArray[255];
+            for (int i = 0; i < 255; i++){
+                streamArray[i]=i+1;
             }
-            for (int i = 0; i < 220; i++){
-              internalNetworkStack.streamData(i);
+            uint8_t cnt = 0;
+            while (cnt < 158) {
+              internalNetworkStack.streamData(streamArray, 255);
+              cnt++;
             }
 
+            t = millis() - t;
+            Serial.printf("40 kByte transmission finished in %d milliseconds\n\r", t);
+            
             BlueteethPacket streamRequest(false, internalNetworkStack.getAddress(), 254);
             streamRequest.type = STREAM;
             internalNetworkStack.queuePacket(true, streamRequest);

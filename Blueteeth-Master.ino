@@ -20,9 +20,7 @@ uint32_t streamTime; //TEMPORARY DEBUG VARIABLE (REMOVE LATER)
 
 void a2dpSinkDataReceived(const uint8_t *data, uint32_t length){
   // Serial.print("BLUETOOTH DATA RECEIVED!");
-  for (int i = 0; i < length; i++){
-    internalNetworkStack.streamData(*(data + i));
-  }
+  internalNetworkStack.streamData(data, length);
 }
 
 void setup() {
@@ -181,8 +179,23 @@ void terminalInputTask(void * params) {
         BlueteethPacket newPacket (false, internalNetworkStack.getAddress(), 254); //Need to declare prior to switch statement to avoid "crosses initilization" error.
 
         switch ( handle_input(input_buffer, terminalParameters) ){
+          
+          case CONNECT:
+            newPacket.dstAddr = 1;
+            newPacket.type = CONNECT;
+            sprintf((char *) newPacket.payload, "Wireless Speaker");
+            internalNetworkStack.queuePacket(1, newPacket);
+            break;
+          
           case PING:
             newPacket.type = PING;
+            internalNetworkStack.queuePacket(1, newPacket);
+            break;
+
+          case INITIALIZAITON:
+            newPacket.dstAddr = 255;
+            newPacket.type = INITIALIZAITON;
+            newPacket.payload[0] = 1;
             internalNetworkStack.queuePacket(1, newPacket);
             break;
 
@@ -213,15 +226,22 @@ void terminalInputTask(void * params) {
             break;
 
           case STREAM : {
-            for (int j = 0; j < 156; j++){
-              for (int i = 1; i <= 255; i++){
-                internalNetworkStack.streamData(i);
-              }
+
+            uint32_t t = millis();
+
+            uint8_t streamArray[255];
+            for (int i = 0; i < 255; i++){
+                streamArray[i]=i+1;
             }
-            for (int i = 0; i < 220; i++){
-              internalNetworkStack.streamData(i);
+            uint8_t cnt = 0;
+            while (cnt < 158) {
+              internalNetworkStack.streamData(streamArray, 255);
+              cnt++;
             }
 
+            t = millis() - t;
+            Serial.printf("40 kByte transmission finished in %d milliseconds\n\r", t);
+            
             BlueteethPacket streamRequest(false, internalNetworkStack.getAddress(), 254);
             streamRequest.type = STREAM;
             internalNetworkStack.queuePacket(true, streamRequest);

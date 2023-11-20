@@ -44,7 +44,21 @@ inline void clear_buffer(char * buffer, int buffer_entries){
 //Outputs: action (the action that should be performed based on argument mapping)
 PacketType argument_mapping(char * arguments[MAX_ARGS], uint8_t num_args, terminalParameters_t & terminalParameters){
 
-    if (0 == strcmp(arguments[0], "help")){ 
+    if (0 == strcmp(arguments[0], "connect")){ 
+      format_terminal_for_new_entry(1);
+      Serial.print("Initiating connecitons\n\r");
+      format_new_terminal_entry();
+      return CONNECT;
+    }
+
+    else if (0 == strcmp(arguments[0], "init")){ 
+      format_terminal_for_new_entry(1);
+      Serial.print("Re-initializing\n\r");
+      format_new_terminal_entry();
+      return INITIALIZAITON;
+    }
+
+    else if (0 == strcmp(arguments[0], "help")){ 
       format_terminal_for_new_entry(1);
       Serial.print("Valid options are: clear and scan.\n\r");
       format_new_terminal_entry();
