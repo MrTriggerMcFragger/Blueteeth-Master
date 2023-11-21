@@ -16,8 +16,6 @@ BluetoothA2DPSink a2dpSink;
 BlueteethMasterStack internalNetworkStack(10, &packetReceptionTaskHandle, &Serial2, &Serial1); //Serial1 = Data Plane, Serial2 = Control Plane
 BlueteethBaseStack * internalNetworkStackPtr = &internalNetworkStack; //Need pointer for run-time polymorphism
 
-uint32_t streamTime; //TEMPORARY DEBUG VARIABLE (REMOVE LATER)
-
 /*  Callback for when data is received from A2DP BT stream
 *   
 *   @data - Pointer to an array with the individual bytes received.
@@ -26,6 +24,17 @@ uint32_t streamTime; //TEMPORARY DEBUG VARIABLE (REMOVE LATER)
 void a2dpSinkDataReceived(const uint8_t *data, uint32_t length){
   // Serial.print("BLUETOOTH DATA RECEIVED!");
   internalNetworkStack.streamData(data, length);
+}
+
+void read_data_stream(const uint8_t *data, uint32_t length) {
+    // process all data
+    int16_t *values = (int16_t*) data;
+    for (int j=0; j<length/2; j+=2){
+      // print the 2 channel values
+      Serial.print(values[j]);
+      Serial.print(",");
+      Serial.println(values[j+1]);
+    }
 }
 
 void setup() {
@@ -273,6 +282,13 @@ void terminalInputTask(void * params) {
             internalNetworkStack.queuePacket(true, streamRequest);
             break;
           }
+
+          case TEST:
+            // Serial.print("Attempting to stream sample audio data on the data plane\n\r");
+            // internalNetworkStack.streamData((uint8_t *) piano16bit_raw, sizeof(piano16bit_raw));
+            Serial.print("Printing out samples to terminal\n\r");
+            a2dpSink.set_stream_reader(read_data_stream);
+            break;
             
           default:
             break;

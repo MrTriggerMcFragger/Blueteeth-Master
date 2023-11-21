@@ -18,28 +18,44 @@ BluetoothA2DPSink a2dpSink;
 BlueteethMasterStack internalNetworkStack(10, &packetReceptionTaskHandle, &Serial2, &Serial1); //Serial1 = Data Plane, Serial2 = Control Plane
 BlueteethBaseStack * internalNetworkStackPtr = &internalNetworkStack; //Need pointer for run-time polymorphism
 
-uint32_t streamTime; //TEMPORARY DEBUG VARIABLE (REMOVE LATER)
-
-#line 21 "C:\\Users\\ztzac\\Documents\\GitHub\\Blueteeth-Master\\Blueteeth-Master.ino"
+/*  Callback for when data is received from A2DP BT stream
+*   
+*   @data - Pointer to an array with the individual bytes received.
+*   @length - The number of bytes received.
+*/ 
+#line 24 "C:\\Users\\ztzac\\Documents\\GitHub\\Blueteeth-Master\\Blueteeth-Master.ino"
 void a2dpSinkDataReceived(const uint8_t *data, uint32_t length);
-#line 26 "C:\\Users\\ztzac\\Documents\\GitHub\\Blueteeth-Master\\Blueteeth-Master.ino"
+#line 29 "C:\\Users\\ztzac\\Documents\\GitHub\\Blueteeth-Master\\Blueteeth-Master.ino"
+void read_data_stream(const uint8_t *data, uint32_t length);
+#line 40 "C:\\Users\\ztzac\\Documents\\GitHub\\Blueteeth-Master\\Blueteeth-Master.ino"
 void setup();
-#line 67 "C:\\Users\\ztzac\\Documents\\GitHub\\Blueteeth-Master\\Blueteeth-Master.ino"
+#line 81 "C:\\Users\\ztzac\\Documents\\GitHub\\Blueteeth-Master\\Blueteeth-Master.ino"
 void loop();
-#line 74 "C:\\Users\\ztzac\\Documents\\GitHub\\Blueteeth-Master\\Blueteeth-Master.ino"
+#line 88 "C:\\Users\\ztzac\\Documents\\GitHub\\Blueteeth-Master\\Blueteeth-Master.ino"
 void ringTokenWatchdogTask(void * params);
-#line 86 "C:\\Users\\ztzac\\Documents\\GitHub\\Blueteeth-Master\\Blueteeth-Master.ino"
+#line 106 "C:\\Users\\ztzac\\Documents\\GitHub\\Blueteeth-Master\\Blueteeth-Master.ino"
 void int2Bytes(uint32_t integer, uint8_t * byteArray);
-#line 92 "C:\\Users\\ztzac\\Documents\\GitHub\\Blueteeth-Master\\Blueteeth-Master.ino"
+#line 117 "C:\\Users\\ztzac\\Documents\\GitHub\\Blueteeth-Master\\Blueteeth-Master.ino"
 uint32_t bytes2Int(uint8_t * byteArray);
-#line 103 "C:\\Users\\ztzac\\Documents\\GitHub\\Blueteeth-Master\\Blueteeth-Master.ino"
+#line 128 "C:\\Users\\ztzac\\Documents\\GitHub\\Blueteeth-Master\\Blueteeth-Master.ino"
 void packetReceptionTask(void * pvParams);
-#line 156 "C:\\Users\\ztzac\\Documents\\GitHub\\Blueteeth-Master\\Blueteeth-Master.ino"
+#line 185 "C:\\Users\\ztzac\\Documents\\GitHub\\Blueteeth-Master\\Blueteeth-Master.ino"
 void terminalInputTask(void * params);
-#line 21 "C:\\Users\\ztzac\\Documents\\GitHub\\Blueteeth-Master\\Blueteeth-Master.ino"
+#line 24 "C:\\Users\\ztzac\\Documents\\GitHub\\Blueteeth-Master\\Blueteeth-Master.ino"
 void a2dpSinkDataReceived(const uint8_t *data, uint32_t length){
   // Serial.print("BLUETOOTH DATA RECEIVED!");
   internalNetworkStack.streamData(data, length);
+}
+
+void read_data_stream(const uint8_t *data, uint32_t length) {
+    // process all data
+    int16_t *values = (int16_t*) data;
+    for (int j=0; j<length/2; j+=2){
+      // print the 2 channel values
+      Serial.print(values[j]);
+      Serial.print(",");
+      Serial.println(values[j+1]);
+    }
 }
 
 void setup() {
@@ -102,12 +118,23 @@ void ringTokenWatchdogTask(void * params) {
   }
 }
 
+/*  Gets individual bytes of a 32 bit integer
+*   
+*   @integer - the integer being analyzed
+*   @byteArray - array containing 4 bytes corresponding to a 32 bit integer
+*   @return - the resulting integer
+*/  
 inline void int2Bytes(uint32_t integer, uint8_t * byteArray){
   for (int offset = 0; offset < 32; offset += 8){
     byteArray[offset/8] = integer >> offset; //assignment will truncate so only first 8 bits are assigned
   }
 }
 
+/*  Unpacks byte array into a 32 bit integer
+*   
+*   @byteArray - array containing 4 bytes corresponding to a 32 bit integer
+*   @return - the resulting integer
+*/  
 inline uint32_t bytes2Int(uint8_t * byteArray){
   uint32_t integer = 0;
   for (int offset = 0; offset < 32; offset += 8){
@@ -144,6 +171,10 @@ void packetReceptionTask (void * pvParams){
   }
 }
 
+/*  Prints all characters in a character buffer
+*
+*   @endPos - last buffer position that should be printed
+*/ 
 void inline printBuffer(int endPos){
 
   Serial.print("\0337"); //save cursor positon
@@ -272,6 +303,13 @@ void terminalInputTask(void * params) {
             internalNetworkStack.queuePacket(true, streamRequest);
             break;
           }
+
+          case TEST:
+            // Serial.print("Attempting to stream sample audio data on the data plane\n\r");
+            // internalNetworkStack.streamData((uint8_t *) piano16bit_raw, sizeof(piano16bit_raw));
+            Serial.print("Printing out samples to terminal\n\r");
+            a2dpSink.set_stream_reader(read_data_stream);
+            break;
             
           default:
             break;
