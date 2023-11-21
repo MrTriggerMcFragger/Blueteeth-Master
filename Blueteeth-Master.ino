@@ -284,10 +284,10 @@ void terminalInputTask(void * params) {
           }
 
           case TEST:
-            // Serial.print("Attempting to stream sample audio data on the data plane\n\r");
-            // internalNetworkStack.streamData((uint8_t *) piano16bit_raw, sizeof(piano16bit_raw));
-            Serial.print("Printing out samples to terminal\n\r");
-            a2dpSink.set_stream_reader(read_data_stream);
+            Serial.print("Attempting to stream sample audio data on the data plane\n\r");
+            internalNetworkStack.streamData((uint8_t *) piano16bit_raw, sizeof(piano16bit_raw));
+            // Serial.print("Printing out samples to terminal\n\r");
+            // a2dpSink.set_stream_reader(read_data_stream);
             break;
             
           default:
