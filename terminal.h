@@ -74,6 +74,13 @@ PacketType argument_mapping(char * arguments[MAX_ARGS], uint8_t num_args, termin
       return PING;
     }
 
+    else if (0 == strcmp(arguments[0], "drop")){ 
+      format_terminal_for_new_entry(1);
+      Serial.print("Slave 1 will drop 1 byte\n\r");
+      format_new_terminal_entry();
+      return DROP;
+    }
+
     else if (0 == strcmp(arguments[0], "scan")){ 
       format_terminal_for_new_entry(1);
       Serial.print("Scan starting\n\r");

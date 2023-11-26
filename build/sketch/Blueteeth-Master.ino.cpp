@@ -9,6 +9,7 @@ SemaphoreHandle_t uartMutex;
 TaskHandle_t terminalInputTaskHandle;
 TaskHandle_t ringTokenWatchdogTaskHandle;
 TaskHandle_t packetReceptionTaskHandle;
+TaskHandle_t dataStreamPackagerTaskHandle;
 
 terminalParameters_t terminalParameters;
 int discoveryIdx;
@@ -18,33 +19,45 @@ BluetoothA2DPSink a2dpSink;
 BlueteethMasterStack internalNetworkStack(10, &packetReceptionTaskHandle, &Serial2, &Serial1); //Serial1 = Data Plane, Serial2 = Control Plane
 BlueteethBaseStack * internalNetworkStackPtr = &internalNetworkStack; //Need pointer for run-time polymorphism
 
+bool streamActive;
+
 /*  Callback for when data is received from A2DP BT stream
 *   
 *   @data - Pointer to an array with the individual bytes received.
 *   @length - The number of bytes received.
 */ 
-#line 24 "C:\\Users\\ztzac\\Documents\\GitHub\\Blueteeth-Master\\Blueteeth-Master.ino"
+#line 27 "C:\\Users\\ztzac\\Documents\\GitHub\\Blueteeth-Master\\Blueteeth-Master.ino"
 void a2dpSinkDataReceived(const uint8_t *data, uint32_t length);
-#line 29 "C:\\Users\\ztzac\\Documents\\GitHub\\Blueteeth-Master\\Blueteeth-Master.ino"
-void read_data_stream(const uint8_t *data, uint32_t length);
 #line 40 "C:\\Users\\ztzac\\Documents\\GitHub\\Blueteeth-Master\\Blueteeth-Master.ino"
+void read_data_stream(const uint8_t *data, uint32_t length);
+#line 51 "C:\\Users\\ztzac\\Documents\\GitHub\\Blueteeth-Master\\Blueteeth-Master.ino"
 void setup();
-#line 81 "C:\\Users\\ztzac\\Documents\\GitHub\\Blueteeth-Master\\Blueteeth-Master.ino"
+#line 99 "C:\\Users\\ztzac\\Documents\\GitHub\\Blueteeth-Master\\Blueteeth-Master.ino"
 void loop();
-#line 88 "C:\\Users\\ztzac\\Documents\\GitHub\\Blueteeth-Master\\Blueteeth-Master.ino"
-void ringTokenWatchdogTask(void * params);
 #line 106 "C:\\Users\\ztzac\\Documents\\GitHub\\Blueteeth-Master\\Blueteeth-Master.ino"
+void ringTokenWatchdogTask(void * params);
+#line 143 "C:\\Users\\ztzac\\Documents\\GitHub\\Blueteeth-Master\\Blueteeth-Master.ino"
+void dataStreamPackagerTask(void * params);
+#line 177 "C:\\Users\\ztzac\\Documents\\GitHub\\Blueteeth-Master\\Blueteeth-Master.ino"
 void int2Bytes(uint32_t integer, uint8_t * byteArray);
-#line 117 "C:\\Users\\ztzac\\Documents\\GitHub\\Blueteeth-Master\\Blueteeth-Master.ino"
+#line 188 "C:\\Users\\ztzac\\Documents\\GitHub\\Blueteeth-Master\\Blueteeth-Master.ino"
 uint32_t bytes2Int(uint8_t * byteArray);
-#line 128 "C:\\Users\\ztzac\\Documents\\GitHub\\Blueteeth-Master\\Blueteeth-Master.ino"
+#line 199 "C:\\Users\\ztzac\\Documents\\GitHub\\Blueteeth-Master\\Blueteeth-Master.ino"
 void packetReceptionTask(void * pvParams);
-#line 185 "C:\\Users\\ztzac\\Documents\\GitHub\\Blueteeth-Master\\Blueteeth-Master.ino"
+#line 256 "C:\\Users\\ztzac\\Documents\\GitHub\\Blueteeth-Master\\Blueteeth-Master.ino"
 void terminalInputTask(void * params);
-#line 24 "C:\\Users\\ztzac\\Documents\\GitHub\\Blueteeth-Master\\Blueteeth-Master.ino"
+#line 27 "C:\\Users\\ztzac\\Documents\\GitHub\\Blueteeth-Master\\Blueteeth-Master.ino"
 void a2dpSinkDataReceived(const uint8_t *data, uint32_t length){
   // Serial.print("BLUETOOTH DATA RECEIVED!");
-  internalNetworkStack.streamData(data, length);
+  
+  for (int i = 0; i < length; i++){
+    internalNetworkStack.dataBuffer.push_back(data[i]);
+  }
+
+  if (streamActive == false){
+    vTaskResume(dataStreamPackagerTaskHandle);
+    streamActive = true;
+  }
 }
 
 void read_data_stream(const uint8_t *data, uint32_t length) {
@@ -77,21 +90,28 @@ void setup() {
   "UART TERMINAL INPUT", // Task name
   4096, // Stack depth
   NULL, 
-  1, // Priority
+  3, // Priority
   &terminalInputTaskHandle); // Task handler
   
   xTaskCreate(ringTokenWatchdogTask, // Task function
   "RING TOKEN WATCHDOG", // Task name
   4096, // Stack depth 
   NULL, 
-  1, // Priority
+  2, // Priority
   &ringTokenWatchdogTaskHandle); // Task handler
+
+  xTaskCreate(dataStreamPackagerTask, // Task function
+  "DATA STREAM PACKAGER", // Task name
+  8192, // Stack depth 
+  NULL, 
+  1, // Priority
+  &dataStreamPackagerTaskHandle); // Task handler
 
   xTaskCreate(packetReceptionTask, // Task function
   "PACKET RECEPTION HANDLER", // Task name
   4096, // Stack depth 
   NULL, 
-  1, // Priority
+  2, // Priority
   &packetReceptionTaskHandle); // Task handler
 
   a2dpSink.set_stream_reader(a2dpSinkDataReceived);
@@ -115,6 +135,59 @@ void ringTokenWatchdogTask(void * params) {
       internalNetworkStack.generateNewToken();
     }
     internalNetworkStack.resetTokenRxFlag(); 
+  }
+}
+
+#define SENTINEL_CHAR (0b11111111) 
+void inline packDataStream(uint8_t * packedData, int len, deque<uint8_t> & dataBuffer){
+
+    uint8_t select_lower;
+    size_t packagedDataEnd = len + len/7*2; //For each 7 bytes, 1 sentinal character byte and 8 0 bits are added.
+    
+    Serial.printf("Buffer size before is %d\n\r", dataBuffer.size());
+    for(int frame = 0; frame < packagedDataEnd; frame += 9){
+        select_lower = 0b00000001; //used to select the lower portion of the unpacked byte;
+        
+        packedData[frame] = SENTINEL_CHAR;
+        packedData[frame + 1] = 0; //Need to set the first actual packaged byte to 0 for loop to work
+        for(int byte = 1; byte < 8; byte++){
+            packedData[frame + byte] += dataBuffer.front() >> byte;
+            packedData[frame + byte + 1] = (select_lower & dataBuffer.front()) << (7 - byte); 
+            dataBuffer.pop_front();
+
+            select_lower = (select_lower << 1) + 1;
+        }
+        // Serial.printf("Frame %d filled\n\r", frame);
+    }
+    Serial.printf("Buffer size after is %d\n\r", dataBuffer.size());
+
+}
+
+void dataStreamPackagerTask(void * params) {
+
+  while (1){
+
+    if (internalNetworkStack.dataBuffer.size() == 0) { 
+      streamActive = false;
+      vTaskSuspend(NULL);
+    }
+
+    size_t dataLen = min(internalNetworkStack.dataBuffer.size(), (size_t) DATA_PLANE_SERIAL_TX_BUFFER_SIZE); 
+    //When receiving a random number of bytes, will need to add up to 7 additional zeros to make the entire payload divisible by 7
+    if ((dataLen % 7) != 0){
+      int inc = 7 - (dataLen % 7);
+      // Serial.printf("Data length is %d bytes, need to add %d bytes", dataLen, inc);
+      for (int i = 0; i < (dataLen + inc); i++){ 
+        internalNetworkStack.dataBuffer.push_back(0);
+      }
+      dataLen += inc;
+    }
+
+    size_t frameLen = dataLen + dataLen/7*2; Serial.printf("Data length is %d and frame length is %d\n\r", dataLen, frameLen);
+    uint8_t tmp[frameLen]; Serial.print("Formatted data stream... ");
+    packDataStream(tmp, dataLen, internalNetworkStack.dataBuffer); Serial.print("Packed data stream... ");
+    Serial.printf("Buffer size is %d ", internalNetworkStack.dataBuffer.size());
+    internalNetworkStack.streamData(tmp, frameLen); Serial.print("Sent data stream...\n\r");
   }
 }
 
@@ -231,10 +304,18 @@ void terminalInputTask(void * params) {
         switch ( handle_input(input_buffer, terminalParameters) ){
           
           case CONNECT:
-            newPacket.dstAddr = 1;
             newPacket.type = CONNECT;
-            sprintf((char *) newPacket.payload, "Wireless Speaker");
-            internalNetworkStack.queuePacket(1, newPacket);
+            for (int address = 1; address <= 2; address++){
+              newPacket.dstAddr = address;
+              sprintf((char *) newPacket.payload, "Wireless Speaker");
+              internalNetworkStack.queuePacket(1, newPacket);
+            }
+            break;
+          
+          case DROP:
+            internalNetworkStack.dataBuffer.resize(0);
+            // newPacket.type = DROP;
+            // internalNetworkStack.queuePacket(1, newPacket);
             break;
           
           case DISCONNECT:
@@ -285,28 +366,50 @@ void terminalInputTask(void * params) {
 
             uint32_t t = millis();
 
-            uint8_t streamArray[255];
-            for (int i = 0; i < 255; i++){
-                streamArray[i]=i+1;
+            // uint8_t streamArray[255];
+            // for (int i = 0; i < 255; i++){
+            //     streamArray[i]=i+1;
+            // }
+            // uint8_t cnt = 0;
+            // while (cnt < 157) {
+            //   if (cnt == 156){
+            //     internalNetworkStack.streamData(streamArray, 220);
+            //   }
+            //   else {
+            //     internalNetworkStack.streamData(streamArray, 255);
+            //   }
+            //   cnt++;
+            // }
+
+            for (int i = 0; i < 40000; i++){
+
+              internalNetworkStack.dataBuffer.push_back( (i % 255) + 1 );
+            
             }
-            uint8_t cnt = 0;
-            while (cnt < 158) {
-              internalNetworkStack.streamData(streamArray, 255);
-              cnt++;
+
+            if (streamActive == false) {
+              vTaskResume(dataStreamPackagerTaskHandle);
+              streamActive = true;
             }
 
             t = millis() - t;
+
             Serial.printf("40 kByte transmission finished in %d milliseconds\n\r", t);
             
+            delay(100);
+
             BlueteethPacket streamRequest(false, internalNetworkStack.getAddress(), 254);
             streamRequest.type = STREAM;
             internalNetworkStack.queuePacket(true, streamRequest);
+
             break;
+
           }
 
           case TEST:
             Serial.print("Attempting to stream sample audio data on the data plane\n\r");
             internalNetworkStack.streamData((uint8_t *) piano16bit_raw, sizeof(piano16bit_raw));
+            
             // Serial.print("Printing out samples to terminal\n\r");
             // a2dpSink.set_stream_reader(read_data_stream);
             break;
