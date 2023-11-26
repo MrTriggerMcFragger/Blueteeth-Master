@@ -17,7 +17,7 @@ BluetoothA2DPSink a2dpSink;
 BlueteethMasterStack internalNetworkStack(10, &packetReceptionTaskHandle, &Serial2, &Serial1); //Serial1 = Data Plane, Serial2 = Control Plane
 BlueteethBaseStack * internalNetworkStackPtr = &internalNetworkStack; //Need pointer for run-time polymorphism
 
-bool streamActive;
+volatile bool streamActive;
 
 /*  Callback for when data is received from A2DP BT stream
 *   
@@ -121,7 +121,7 @@ void inline packDataStream(uint8_t * packedData, int len, deque<uint8_t> & dataB
     uint8_t select_lower;
     size_t packagedDataEnd = len + len/7*2; //For each 7 bytes, 1 sentinal character byte and 8 0 bits are added.
     
-    Serial.printf("Buffer size before is %d\n\r", dataBuffer.size());
+    // Serial.printf("Buffer size before is %d\n\r", dataBuffer.size());
     for(int frame = 0; frame < packagedDataEnd; frame += 9){
         select_lower = 0b00000001; //used to select the lower portion of the unpacked byte;
         
@@ -136,7 +136,7 @@ void inline packDataStream(uint8_t * packedData, int len, deque<uint8_t> & dataB
         }
         // Serial.printf("Frame %d filled\n\r", frame);
     }
-    Serial.printf("Buffer size after is %d\n\r", dataBuffer.size());
+    // Serial.printf("Buffer size after is %d\n\r", dataBuffer.size());
 
 }
 
@@ -154,17 +154,21 @@ void dataStreamPackagerTask(void * params) {
     if ((dataLen % 7) != 0){
       int inc = 7 - (dataLen % 7);
       // Serial.printf("Data length is %d bytes, need to add %d bytes", dataLen, inc);
-      for (int i = 0; i < (dataLen + inc); i++){ 
+      for (int i = 0; i < inc; i++){ 
         internalNetworkStack.dataBuffer.push_back(0);
       }
       dataLen += inc;
     }
 
-    size_t frameLen = dataLen + dataLen/7*2; Serial.printf("Data length is %d and frame length is %d\n\r", dataLen, frameLen);
-    uint8_t tmp[frameLen]; Serial.print("Formatted data stream... ");
-    packDataStream(tmp, dataLen, internalNetworkStack.dataBuffer); Serial.print("Packed data stream... ");
-    Serial.printf("Buffer size is %d ", internalNetworkStack.dataBuffer.size());
-    internalNetworkStack.streamData(tmp, frameLen); Serial.print("Sent data stream...\n\r");
+    size_t frameLen = dataLen + dataLen/7*2; 
+    // Serial.printf("Data length is %d and frame length is %d\n\r", dataLen, frameLen);
+    uint8_t tmp[frameLen]; 
+    // Serial.print("Formatted data stream... ");
+    packDataStream(tmp, dataLen, internalNetworkStack.dataBuffer); 
+    // Serial.print("Packed data stream... ");
+    // Serial.printf("Buffer size is %d ", internalNetworkStack.dataBuffer.size());
+    internalNetworkStack.streamData(tmp, frameLen); 
+    // Serial.print("Sent data stream...\n\r");
   }
 }
 
@@ -341,8 +345,6 @@ void terminalInputTask(void * params) {
 
           case STREAM : {
 
-            uint32_t t = millis();
-
             // uint8_t streamArray[255];
             // for (int i = 0; i < 255; i++){
             //     streamArray[i]=i+1;
@@ -364,15 +366,20 @@ void terminalInputTask(void * params) {
             
             }
 
+            uint32_t t = millis();
+
             if (streamActive == false) {
               vTaskResume(dataStreamPackagerTaskHandle);
               streamActive = true;
+            }
+            while (streamActive){
+              //do nothing
             }
 
             t = millis() - t;
 
             Serial.printf("40 kByte transmission finished in %d milliseconds\n\r", t);
-            
+
             delay(100);
 
             BlueteethPacket streamRequest(false, internalNetworkStack.getAddress(), 254);
