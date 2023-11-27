@@ -136,9 +136,13 @@ void dataStreamPackagerTask(void * params) {
     packDataStream(tmp, dataLen, internalNetworkStack.dataBuffer); 
     t = millis() - t;
     
-    // Serial.printf("Sending %d bytes and there are %d bytes available to write\n\r", frameLen, internalNetworkStack.getDataPlaneBytesAvailableToWrite());
-
+    // Serial.printf("Sending %d bytes (%d should match) and there are %d bytes available to write\n\r", frameLen, sizeof(tmp), internalNetworkStack.getDataPlaneBytesAvailableToWrite());
+    // for(int i = 0; i < sizeof(tmp); i += FRAME_SIZE){
+    //   Serial.printf("%s ", tmp[i] == FRAME_START_SENTINEL ? " " : "Invalid");
+    // }
+    // Serial.print("\n\r");
     internalNetworkStack.streamData(tmp, frameLen); 
+
   }
 }
 
