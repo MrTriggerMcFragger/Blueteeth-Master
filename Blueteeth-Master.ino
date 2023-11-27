@@ -48,8 +48,9 @@ void read_data_stream(const uint8_t *data, uint32_t length) {
     }
 }
 
+
 void setup() {
-  
+
   //Start Serial comms
   Serial.begin(115200);
   uartMutex = xSemaphoreCreateMutex(); //mutex for UART
@@ -115,31 +116,6 @@ void ringTokenWatchdogTask(void * params) {
   }
 }
 
-#define SENTINEL_CHAR (0b11111111) 
-void inline packDataStream(uint8_t * packedData, int len, deque<uint8_t> & dataBuffer){
-
-    uint8_t select_lower;
-    size_t packagedDataEnd = len + len/7*2; //For each 7 bytes, 1 sentinal character byte and 8 0 bits are added.
-    
-    // Serial.printf("Buffer size before is %d\n\r", dataBuffer.size());
-    for(int frame = 0; frame < packagedDataEnd; frame += 9){
-        select_lower = 0b00000001; //used to select the lower portion of the unpacked byte;
-        
-        packedData[frame] = SENTINEL_CHAR;
-        packedData[frame + 1] = 0; //Need to set the first actual packaged byte to 0 for loop to work
-        for(int byte = 1; byte < 8; byte++){
-            packedData[frame + byte] += dataBuffer.front() >> byte;
-            packedData[frame + byte + 1] = (select_lower & dataBuffer.front()) << (7 - byte); 
-            dataBuffer.pop_front();
-
-            select_lower = (select_lower << 1) + 1;
-        }
-        // Serial.printf("Frame %d filled\n\r", frame);
-    }
-    // Serial.printf("Buffer size after is %d\n\r", dataBuffer.size());
-
-}
-
 void dataStreamPackagerTask(void * params) {
 
   while (1){
@@ -149,26 +125,20 @@ void dataStreamPackagerTask(void * params) {
       vTaskSuspend(NULL);
     }
 
-    size_t dataLen = min(internalNetworkStack.dataBuffer.size(), (size_t) DATA_PLANE_SERIAL_TX_BUFFER_SIZE); 
-    //When receiving a random number of bytes, will need to add up to 7 additional zeros to make the entire payload divisible by 7
-    if ((dataLen % 7) != 0){
-      int inc = 7 - (dataLen % 7);
-      // Serial.printf("Data length is %d bytes, need to add %d bytes", dataLen, inc);
-      for (int i = 0; i < inc; i++){ 
-        internalNetworkStack.dataBuffer.push_back(0);
-      }
-      dataLen += inc;
-    }
+    size_t dataLen = min(internalNetworkStack.dataBuffer.size(), (size_t) MAX_DATA_PLANE_PAYLOAD_SIZE); 
 
-    size_t frameLen = dataLen + dataLen/7*2; 
+    size_t frameLen = ceil( (double) dataLen / PAYLOAD_SIZE * FRAME_SIZE);
     // Serial.printf("Data length is %d and frame length is %d\n\r", dataLen, frameLen);
+    
     uint8_t tmp[frameLen]; 
-    // Serial.print("Formatted data stream... ");
+    uint8_t t = millis();
+
     packDataStream(tmp, dataLen, internalNetworkStack.dataBuffer); 
-    // Serial.print("Packed data stream... ");
-    // Serial.printf("Buffer size is %d ", internalNetworkStack.dataBuffer.size());
+    t = millis() - t;
+    
+    // Serial.printf("Sending %d bytes and there are %d bytes available to write\n\r", frameLen, internalNetworkStack.getDataPlaneBytesAvailableToWrite());
+
     internalNetworkStack.streamData(tmp, frameLen); 
-    // Serial.print("Sent data stream...\n\r");
   }
 }
 
@@ -286,7 +256,7 @@ void terminalInputTask(void * params) {
           
           case CONNECT:
             newPacket.type = CONNECT;
-            for (int address = 1; address <= 2; address++){
+            for (int address = 1; address <= 3; address++){
               newPacket.dstAddr = address;
               sprintf((char *) newPacket.payload, "Wireless Speaker");
               internalNetworkStack.queuePacket(1, newPacket);
@@ -343,22 +313,7 @@ void terminalInputTask(void * params) {
             }
             break;
 
-          case STREAM : {
-
-            // uint8_t streamArray[255];
-            // for (int i = 0; i < 255; i++){
-            //     streamArray[i]=i+1;
-            // }
-            // uint8_t cnt = 0;
-            // while (cnt < 157) {
-            //   if (cnt == 156){
-            //     internalNetworkStack.streamData(streamArray, 220);
-            //   }
-            //   else {
-            //     internalNetworkStack.streamData(streamArray, 255);
-            //   }
-            //   cnt++;
-            // }
+          case STREAM: {
 
             for (int i = 0; i < 40000; i++){
 
@@ -372,15 +327,16 @@ void terminalInputTask(void * params) {
               vTaskResume(dataStreamPackagerTaskHandle);
               streamActive = true;
             }
+
             while (streamActive){
-              //do nothing
+              // Serial.printf("%s\n\r", streamActive ? "Active" : "Finished");
+              // vTaskDelay(1);
             }
+            // Serial.print("Finished!\n\r");
 
             t = millis() - t;
 
             Serial.printf("40 kByte transmission finished in %d milliseconds\n\r", t);
-
-            delay(100);
 
             BlueteethPacket streamRequest(false, internalNetworkStack.getAddress(), 254);
             streamRequest.type = STREAM;
