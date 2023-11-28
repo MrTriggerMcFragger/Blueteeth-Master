@@ -1,8 +1,0 @@
-#line 1 "C:\\Users\\ztzac\\Documents\\GitHub\\Blueteeth-Master\\.vscode\\arduino.json"
-{
-    "configuration": "PartitionScheme=default,CPUFreq=240,UploadSpeed=921600,FlashMode=qio,FlashFreq=80,DebugLevel=none,EraseFlash=none",
-    "board": "esp32:esp32:uPesy_wroom",
-    "output": "build",
-    "port": "COM9",
-    "sketch": "Blueteeth-Master.ino"
-}
