@@ -188,7 +188,12 @@ void packetReceptionTask (void * pvParams){
         break;
       
       case STREAM_RESULTS:
-        Serial.printf("Stream results from ADDR%d: Checksum = %d, Time = %d\n\r", packetReceived.srcAddr, bytes2Int(packetReceived.payload), bytes2Int(packetReceived.payload + 4));
+        // if (bytes2Int(packetReceived.payload + 4) > 1000){
+        //   Serial.print("Data stream failed");
+        // }
+        // else {
+          Serial.printf("Stream results from ADDR%d: Checksum = %d, Time = %d\n\r", packetReceived.srcAddr, bytes2Int(packetReceived.payload), bytes2Int(packetReceived.payload + 4));
+        // }
         break;
 
       default:
@@ -319,7 +324,7 @@ void terminalInputTask(void * params) {
 
           case STREAM: {
 
-            for (int i = 0; i < 40000; i++){
+            for (int i = 0; i < DATA_STREAM_TEST_SIZE; i++){
 
               internalNetworkStack.dataBuffer.push_back( (i % 255) + 1 );
             
@@ -339,8 +344,8 @@ void terminalInputTask(void * params) {
             // Serial.print("Finished!\n\r");
 
             t = millis() - t;
-
-            Serial.printf("40 kByte transmission finished in %d milliseconds\n\r", t);
+  
+            Serial.printf("%d kByte transmission finished in %d milliseconds\n\r", DATA_STREAM_TEST_SIZE/1000, t);
 
             BlueteethPacket streamRequest(false, internalNetworkStack.getAddress(), 254);
             streamRequest.type = STREAM;
