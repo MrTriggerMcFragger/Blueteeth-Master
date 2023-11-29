@@ -1,21 +1,21 @@
 #include "Blueteeth-Master.h"
 
-int scanTime = 5; //In seconds
 char input_buffer[MAX_BUFFER_SIZE];
-BLEScan* pBLEScan;
 SemaphoreHandle_t uartMutex;
 TaskHandle_t terminalInputTaskHandle;
 TaskHandle_t ringTokenWatchdogTaskHandle;
 TaskHandle_t packetReceptionTaskHandle;
 TaskHandle_t dataStreamPackagerTaskHandle;
+TaskHandle_t dataStreamMonitorTaskHandle;
 
 terminalParameters_t terminalParameters;
-int discoveryIdx;
 
 BluetoothA2DPSink a2dpSink;
 
 BlueteethMasterStack internalNetworkStack(10, &packetReceptionTaskHandle, &Serial2, &Serial1); //Serial1 = Data Plane, Serial2 = Control Plane
 BlueteethBaseStack * internalNetworkStackPtr = &internalNetworkStack; //Need pointer for run-time polymorphism
+
+SemaphoreHandle_t dataBufferMutex;
 
 volatile bool streamActive;
 
@@ -27,6 +27,8 @@ volatile bool streamActive;
 void a2dpSinkDataReceived(const uint8_t *data, uint32_t length){
   // Serial.print("BLUETOOTH DATA RECEIVED!");
   
+  internalNetworkStack.recordDataReceptionTime();
+
   for (int i = 0; i < length; i++){
     internalNetworkStack.dataBuffer.push_back(data[i]);
   }
@@ -53,6 +55,8 @@ void setup() {
 
   //Start Serial comms
   Serial.begin(115200);
+
+  dataBufferMutex = xSemaphoreCreateMutex();
   uartMutex = xSemaphoreCreateMutex(); //mutex for UART
 
   internalNetworkStack.begin();
@@ -66,7 +70,7 @@ void setup() {
   //Create tasks
   xTaskCreate(terminalInputTask, // Task function
   "UART TERMINAL INPUT", // Task name
-  4096, // Stack depth
+  8192, // Stack depth
   NULL, 
   3, // Priority
   &terminalInputTaskHandle); // Task handler
@@ -92,6 +96,13 @@ void setup() {
   2, // Priority
   &packetReceptionTaskHandle); // Task handler
 
+  xTaskCreate(dataStreamMonitorTask, // Task function
+  "DATA STREAM BUFFER MONITOR", // Task name
+  4096, // Stack depth 
+  NULL, 
+  2, // Priority
+  &dataStreamMonitorTaskHandle); // Task handler
+
   a2dpSink.set_stream_reader(a2dpSinkDataReceived);
   a2dpSink.set_auto_reconnect(false);
   a2dpSink.start("Blueteeth Sink"); //Begin advertising
@@ -109,7 +120,6 @@ void ringTokenWatchdogTask(void * params) {
     vTaskDelay(RING_TOKEN_GENERATION_DELAY_MS);
     if (internalNetworkStack.getTokenRxFlag() == false){
       Serial.print("Generating a new token.\n\r"); //DEBUG STATEMENT
-      // internalNetworkStack.tokenReceived();
       internalNetworkStack.generateNewToken();
     }
     internalNetworkStack.resetTokenRxFlag(); 
@@ -118,29 +128,24 @@ void ringTokenWatchdogTask(void * params) {
 
 void dataStreamPackagerTask(void * params) {
 
+  uint8_t tmp[MAX_DATA_PLANE_PAYLOAD_SIZE / PAYLOAD_SIZE * FRAME_SIZE]; //temporary storage
+  size_t dataLen;
+  size_t frameLen;
+
   while (1){
 
-    if (internalNetworkStack.dataBuffer.size() == 0) { 
+    if (internalNetworkStack.dataBuffer.size() < PAYLOAD_SIZE) { 
       streamActive = false;
+      xSemaphoreGive(dataBufferMutex); //give away mutex before suspending
       vTaskSuspend(NULL);
+      xSemaphoreTake(dataBufferMutex, portMAX_DELAY); //take it back after coming out of suspension
     }
 
-    size_t dataLen = min(internalNetworkStack.dataBuffer.size(), (size_t) MAX_DATA_PLANE_PAYLOAD_SIZE); 
+    dataLen = min((internalNetworkStack.dataBuffer.size() / PAYLOAD_SIZE) * PAYLOAD_SIZE, (size_t) MAX_DATA_PLANE_PAYLOAD_SIZE); 
+    frameLen = ceil( (double) dataLen / PAYLOAD_SIZE * FRAME_SIZE);
 
-    size_t frameLen = ceil( (double) dataLen / PAYLOAD_SIZE * FRAME_SIZE);
-    // Serial.printf("Data length is %d and frame length is %d\n\r", dataLen, frameLen);
-    
-    uint8_t tmp[frameLen]; 
-    uint8_t t = millis();
-
-    packDataStream(tmp, dataLen, internalNetworkStack.dataBuffer); 
-    t = millis() - t;
-    
-    // Serial.printf("Sending %d bytes (%d should match) and there are %d bytes available to write\n\r", frameLen, sizeof(tmp), internalNetworkStack.getDataPlaneBytesAvailableToWrite());
-    // for(int i = 0; i < sizeof(tmp); i += FRAME_SIZE){
-    //   Serial.printf("%s ", tmp[i] == FRAME_START_SENTINEL ? " " : "Invalid");
-    // }
-    // Serial.print("\n\r");
+    packDataStream(tmp, dataLen, internalNetworkStack.dataBuffer);
+  
     internalNetworkStack.streamData(tmp, frameLen); 
 
   }
@@ -188,12 +193,12 @@ void packetReceptionTask (void * pvParams){
         break;
       
       case STREAM_RESULTS:
-        // if (bytes2Int(packetReceived.payload + 4) > 1000){
-        //   Serial.print("Data stream failed");
-        // }
-        // else {
+        if (bytes2Int(packetReceived.payload + 4) > 1000){
+          Serial.print("Data stream failed\n\r");
+        }
+        else {
           Serial.printf("Stream results from ADDR%d: Checksum = %d, Time = %d\n\r", packetReceived.srcAddr, bytes2Int(packetReceived.payload), bytes2Int(packetReceived.payload + 4));
-        // }
+        }
         break;
 
       default:
@@ -233,6 +238,21 @@ void inline printBuffer(int endPos){
   Serial.print("\0338"); //restore cursor position
 }
 
+
+#define DATA_STREAM_TIMEOUT (1000)
+void dataStreamMonitorTask (void * pvParams){
+  while(1){
+    vTaskDelay(500);
+    if ((internalNetworkStack.getLastDataReceptionTime() + DATA_STREAM_TIMEOUT) < millis()){
+      // deque<uint8_t>().swap(internalNetworkStack.dataBuffer); 
+      xSemaphoreTake(dataBufferMutex, portMAX_DELAY);
+      internalNetworkStack.dataBuffer.resize(0);
+      xSemaphoreGive(dataBufferMutex);
+      // Serial.printf("Timeout achieved (new size is %d)\n\r", internalNetworkStack.dataBuffer.size());
+    }
+  }
+}
+
 /*  Take in user inputs and handle pre-defined commands.
 *
 */
@@ -240,14 +260,11 @@ void terminalInputTask(void * params) {
 
   clear_buffer(input_buffer, sizeof(input_buffer));
   int buffer_pos = 0;
-  BLEScanResults scanResults;
   const char * btTarget;
   
   while(1){
 
     vTaskDelay(100);
-
-    xSemaphoreTake(uartMutex, portMAX_DELAY);
 
     while (Serial.available() && (buffer_pos < MAX_BUFFER_SIZE)){ //get number of bits on buffer
       
@@ -273,7 +290,9 @@ void terminalInputTask(void * params) {
             break;
           
           case DROP:
+            xSemaphoreTake(dataBufferMutex, portMAX_DELAY);
             internalNetworkStack.dataBuffer.resize(0);
+            xSemaphoreGive(dataBufferMutex);
             // newPacket.type = DROP;
             // internalNetworkStack.queuePacket(1, newPacket);
             break;
@@ -296,57 +315,25 @@ void terminalInputTask(void * params) {
             internalNetworkStack.queuePacket(1, newPacket);
             break;
 
-          case SCAN:
-            
-            discoveryIdx = 0;
-
-            scanResults = performBLEScan(pBLEScan, 5);
-            vTaskDelay(5 * 1000);
-            
-            Serial.print("\0337"); //save cursor
-            Serial.printf("\033[%dF", scanResults.getCount() + 1); //go up N + 1 lines
-            Serial.print("\0332K"); //clear line
-            Serial.print("*** SCAN RESULTS START ***");
-            Serial.print("\0338"); //restore cursor
-            Serial.print("*** SCAN RESULTS END   ***\n\r");
-
-            break;
-
-          case SELECT:
-            if ((terminalParameters.scanIdx > 0) && (terminalParameters.scanIdx < discoveryIdx)){
-              btTarget = scanResults.getDevice(terminalParameters.scanIdx).getName().c_str(); 
-              Serial.printf("Target set to %s\n\r", btTarget);
-            }
-            else {
-              Serial.print("Selection failed\n\r");
-            }
-            break;
-
           case STREAM: {
-
-            for (int i = 0; i < DATA_STREAM_TEST_SIZE; i++){
-
-              internalNetworkStack.dataBuffer.push_back( (i % 255) + 1 );
             
+            internalNetworkStack.recordDataReceptionTime(); //This will stop the data stream monitor from resetting buffer
+            xSemaphoreTake(dataBufferMutex, portMAX_DELAY);
+            for (int i = 0; i < DATA_STREAM_TEST_SIZE; i++){
+              internalNetworkStack.dataBuffer.push_back( (i % 255) + 1 );
             }
-
+            xSemaphoreGive(dataBufferMutex);
             uint32_t t = millis();
-
             if (streamActive == false) {
               vTaskResume(dataStreamPackagerTaskHandle);
               streamActive = true;
             }
-
             while (streamActive){
-              // Serial.printf("%s\n\r", streamActive ? "Active" : "Finished");
-              // vTaskDelay(1);
+              //Do nothing
             }
-            // Serial.print("Finished!\n\r");
-
             t = millis() - t;
-  
             Serial.printf("%d kByte transmission finished in %d milliseconds\n\r", DATA_STREAM_TEST_SIZE/1000, t);
-
+            delay(2*t); //Delay so that the receiver has a chance to receive and process all transmitted data
             BlueteethPacket streamRequest(false, internalNetworkStack.getAddress(), 254);
             streamRequest.type = STREAM;
             internalNetworkStack.queuePacket(true, streamRequest);
@@ -355,22 +342,39 @@ void terminalInputTask(void * params) {
 
           }
 
-          case TEST:
+          case TEST: {
             Serial.print("Attempting to stream sample audio data on the data plane\n\r");
-            internalNetworkStack.streamData((uint8_t *) piano16bit_raw, sizeof(piano16bit_raw));
-            
-            // Serial.print("Printing out samples to terminal\n\r");
-            // a2dpSink.set_stream_reader(read_data_stream);
+            int cnt = 0;
+            int cnt2;
+            int stream_chunk = 40000;
+            while (cnt < sizeof(piano16bit_raw)){
+              internalNetworkStack.recordDataReceptionTime(); //This will stop the data buffer monitor from resetting buffer
+              xSemaphoreTake(dataBufferMutex, portMAX_DELAY);
+              cnt2 = 0;
+              while ( (cnt2 < 40000) && (cnt < sizeof(piano16bit_raw))) {
+                internalNetworkStack.dataBuffer.push_back(piano16bit_raw[cnt]);
+                cnt++;
+                cnt2++;
+              }
+              xSemaphoreGive(dataBufferMutex);
+              if (streamActive == false){
+                vTaskResume(dataStreamPackagerTaskHandle);
+                streamActive = true;
+              }
+              while (streamActive){
+               //Do nothing
+              }
+            }
             break;
+          }
             
           default:
             break;
-            //no action needed
+            //No action needed
 
-        } //handle the input
+        } 
         clear_buffer(input_buffer, sizeof(input_buffer));
         buffer_pos = -1; //return the buffer back to zero (incrimented after this statement)
-        // Serial.printf("Buffer pos is %d", buffer_pos);
       }
       
       else if (input_buffer[buffer_pos] == 127){ //handle a backspace character
@@ -385,8 +389,6 @@ void terminalInputTask(void * params) {
       buffer_pos++;
       
     }
-
-    xSemaphoreGive(uartMutex);
 
   }
 }

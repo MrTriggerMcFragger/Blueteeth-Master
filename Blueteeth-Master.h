@@ -7,12 +7,6 @@
 #include <config.h>
 #include <SoundData.h>
 
-#include <BLEDevice.h>
-#include <BLEUtils.h>
-#include <BLEScan.h>
-#include <BLEAdvertisedDevice.h>
-#include "bluetooth_scanning.h"
-
 #include "terminal.h"
 #include "AudioSamples.h"
 #include <BlueteethInternalNetworkStack.h>
