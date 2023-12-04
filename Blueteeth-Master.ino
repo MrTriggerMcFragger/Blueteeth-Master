@@ -8,6 +8,12 @@ TaskHandle_t terminalInputTaskHandle;
 TaskHandle_t ringTokenWatchdogTaskHandle;
 TaskHandle_t packetReceptionTaskHandle;
 
+void terminalInputTask ( void * );
+void ringTokenWatchdogTask( void * );
+void packetReceptionTask( void * );
+void dataStreamPackagerTask( void * );
+void dataStreamMonitorTask( void * );
+
 terminalParameters_t terminalParameters;
 int discoveryIdx;
 
@@ -16,6 +22,11 @@ BluetoothA2DPSink a2dpSink;
 BlueteethMasterStack internalNetworkStack(10, &packetReceptionTaskHandle, &Serial2, &Serial1); //Serial1 = Data Plane, Serial2 = Control Plane
 BlueteethBaseStack * internalNetworkStackPtr = &internalNetworkStack; //Need pointer for run-time polymorphism
 
+<<<<<<< Updated upstream
+=======
+volatile bool streamActive;
+
+>>>>>>> Stashed changes
 /*  Callback for when data is received from A2DP BT stream
 *   
 *   @data - Pointer to an array with the individual bytes received.
@@ -23,7 +34,21 @@ BlueteethBaseStack * internalNetworkStackPtr = &internalNetworkStack; //Need poi
 */ 
 void a2dpSinkDataReceived(const uint8_t *data, uint32_t length){
   // Serial.print("BLUETOOTH DATA RECEIVED!");
+<<<<<<< Updated upstream
   internalNetworkStack.streamData(data, length);
+=======
+  
+  internalNetworkStack.recordDataBufferAccessTime();
+
+  for (int i = 0; i < length; i++){
+    internalNetworkStack.dataBuffer.push_back(data[i]);
+  }
+
+  if (streamActive == false){
+    vTaskResume(dataStreamPackagerTaskHandle);
+    streamActive = true;
+  }
+>>>>>>> Stashed changes
 }
 
 void read_data_stream(const uint8_t *data, uint32_t length) {
@@ -41,6 +66,10 @@ void setup() {
   
   //Start Serial comms
   Serial.begin(115200);
+<<<<<<< Updated upstream
+=======
+
+>>>>>>> Stashed changes
   uartMutex = xSemaphoreCreateMutex(); //mutex for UART
 
   internalNetworkStack.begin();
@@ -97,6 +126,34 @@ void ringTokenWatchdogTask(void * params) {
   }
 }
 
+<<<<<<< Updated upstream
+=======
+void dataStreamPackagerTask(void * params) {
+
+  uint8_t tmp[MAX_DATA_PLANE_PAYLOAD_SIZE / PAYLOAD_SIZE * FRAME_SIZE]; //temporary storage
+  size_t dataLen;
+  size_t frameLen;
+
+  while (1){
+
+    if (internalNetworkStack.dataBuffer.size() < PAYLOAD_SIZE) { 
+      streamActive = false;
+      xSemaphoreGive(internalNetworkStack.dataPlaneMutex); //give away mutex before suspending
+      vTaskSuspend(NULL);
+      xSemaphoreTake(internalNetworkStack.dataPlaneMutex, portMAX_DELAY); //take it back after coming out of suspension
+    }
+
+    dataLen = min((internalNetworkStack.dataBuffer.size() / PAYLOAD_SIZE) * PAYLOAD_SIZE, (size_t) MAX_DATA_PLANE_PAYLOAD_SIZE); 
+    frameLen = ceil( (double) dataLen / PAYLOAD_SIZE * FRAME_SIZE);
+
+    packDataStream(tmp, dataLen, internalNetworkStack.dataBuffer);
+  
+    internalNetworkStack.streamData(tmp, frameLen); 
+
+  }
+}
+
+>>>>>>> Stashed changes
 /*  Gets individual bytes of a 32 bit integer
 *   
 *   @integer - the integer being analyzed
@@ -139,11 +196,21 @@ void packetReceptionTask (void * pvParams){
         break;
       
       case STREAM_RESULTS:
+<<<<<<< Updated upstream
         Serial.printf("Stream results from ADDR%d: Checksum = %d, Time = %d\n\r", packetReceived.srcAddr, bytes2Int(packetReceived.payload), bytes2Int(packetReceived.payload + 4));
+=======
+        if (bytes2Int(packetReceived.payload + 4) > 10000){
+          Serial.print("Data stream failed\n\r");
+        }
+        else {
+          Serial.printf("Stream results from ADDR%d: Checksum = %d, Time = %d\n\r", packetReceived.srcAddr, bytes2Int(packetReceived.payload), bytes2Int(packetReceived.payload + 4));
+        }
+>>>>>>> Stashed changes
         break;
 
       default:
-        Serial.print("Unknown packet type received.\n\r"); //DEBUG STATEMENT
+        // Sometimes read noise on the line
+        // Serial.print("Unknown packet type received.\n\r"); //DEBUG STATEMENT
         break;
     }
 
@@ -179,6 +246,24 @@ void inline printBuffer(int endPos){
   Serial.print("\0338"); //restore cursor position
 }
 
+<<<<<<< Updated upstream
+=======
+
+#define DATA_STREAM_TIMEOUT (1000)
+void dataStreamMonitorTask (void * pvParams){
+  while(1){
+    vTaskDelay(500);
+    if ((internalNetworkStack.getLastDataBufferAccessTime() + DATA_STREAM_TIMEOUT) < millis()){
+      // deque<uint8_t>().swap(internalNetworkStack.dataBuffer); 
+      xSemaphoreTake(internalNetworkStack.dataPlaneMutex, portMAX_DELAY);
+      internalNetworkStack.dataBuffer.resize(0);
+      xSemaphoreGive(internalNetworkStack.dataPlaneMutex);
+      // Serial.printf("Timeout achieved (new size is %d)\n\r", internalNetworkStack.dataBuffer.size());
+    }
+  }
+}
+
+>>>>>>> Stashed changes
 /*  Take in user inputs and handle pre-defined commands.
 *
 */
@@ -212,8 +297,24 @@ void terminalInputTask(void * params) {
           case CONNECT:
             newPacket.dstAddr = 1;
             newPacket.type = CONNECT;
+<<<<<<< Updated upstream
             sprintf((char *) newPacket.payload, "Wireless Speaker");
             internalNetworkStack.queuePacket(1, newPacket);
+=======
+            for (int address = 1; address <= 3; address++){
+              newPacket.dstAddr = address;
+              sprintf((char *) newPacket.payload, "Wireless Speaker");
+              internalNetworkStack.queuePacket(1, newPacket);
+            }
+            break;
+          
+          case DROP:
+            xSemaphoreTake(internalNetworkStack.dataPlaneMutex, portMAX_DELAY);
+            internalNetworkStack.dataBuffer.resize(0);
+            xSemaphoreGive(internalNetworkStack.dataPlaneMutex);
+            // newPacket.type = DROP;
+            // internalNetworkStack.queuePacket(1, newPacket);
+>>>>>>> Stashed changes
             break;
           
           case DISCONNECT:
@@ -236,6 +337,7 @@ void terminalInputTask(void * params) {
 
           case SCAN:
             
+<<<<<<< Updated upstream
             discoveryIdx = 0;
 
             scanResults = performBLEScan(pBLEScan, 5);
@@ -262,6 +364,15 @@ void terminalInputTask(void * params) {
 
           case STREAM : {
 
+=======
+            internalNetworkStack.recordDataBufferAccessTime(); //This will stop the data stream monitor from resetting buffer
+            xSemaphoreTake(internalNetworkStack.dataPlaneMutex, portMAX_DELAY);
+            internalNetworkStack.dataBuffer.resize(0);
+            for (int i = 0; i < DATA_STREAM_TEST_SIZE; i++){
+              internalNetworkStack.dataBuffer.push_back( (i % 255) + 1 );
+            }
+            xSemaphoreGive(internalNetworkStack.dataPlaneMutex);
+>>>>>>> Stashed changes
             uint32_t t = millis();
 
             uint8_t streamArray[255];
@@ -283,11 +394,37 @@ void terminalInputTask(void * params) {
             break;
           }
 
+<<<<<<< Updated upstream
           case TEST:
             Serial.print("Attempting to stream sample audio data on the data plane\n\r");
             internalNetworkStack.streamData((uint8_t *) piano16bit_raw, sizeof(piano16bit_raw));
             // Serial.print("Printing out samples to terminal\n\r");
             // a2dpSink.set_stream_reader(read_data_stream);
+=======
+          case TEST: {
+            
+            Serial.print("Attempting to stream sample audio data on the data plane\n\r");
+            int cnt = 0;
+            int cnt2;
+            int streamChunk = 40000;
+            while (cnt < sizeof(audioSamples)){
+              internalNetworkStack.recordDataBufferAccessTime(); //This will stop the data buffer monitor from resetting buffer
+              xSemaphoreTake(internalNetworkStack.dataPlaneMutex, portMAX_DELAY);
+              cnt2 = 0;
+              while ( (cnt2 < streamChunk) && (cnt < sizeof(audioSamples))) {
+                internalNetworkStack.dataBuffer.push_back(audioSamples[cnt++]);
+                cnt2++;
+              }
+              xSemaphoreGive(internalNetworkStack.dataPlaneMutex);
+              if (streamActive == false){
+                vTaskResume(dataStreamPackagerTaskHandle);
+                streamActive = true;
+              }
+              while (streamActive){
+               //Do nothing
+              }
+            }
+>>>>>>> Stashed changes
             break;
             
           default:

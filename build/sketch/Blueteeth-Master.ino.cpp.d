@@ -205,6 +205,6 @@ C:\Users\ztzac\Documents\GitHub\Blueteeth-Master\build\sketch\Blueteeth-Master.i
  C:\Users\ztzac\AppData\Local\Arduino15\packages\esp32\hardware\esp32\2.0.11\libraries\BLE\src/BLEAdvertisedDevice.h \
  C:\Users\ztzac\Documents\GitHub\Blueteeth-Master\build\sketch\bluetooth_scanning.h \
  C:\Users\ztzac\Documents\GitHub\Blueteeth-Master\build\sketch\terminal.h \
- C:\Users\ztzac\OneDrive\Documents\Arduino\libraries\BlueteethInternalNetworkStack/BlueteethInternalNetworkStack.h \
+ C:\Users\ztzac\OneDrive\Documents\Arduino\libraries\Blueteeth-Internal-Network-Stack/BlueteethInternalNetworkStack.h \
  C:\Users\ztzac\AppData\Local\Arduino15\packages\esp32\hardware\esp32\2.0.11\cores\esp32/HardwareSerial.h \
  C:\Users\ztzac\Documents\GitHub\Blueteeth-Master\build\sketch\AudioSamples.h
