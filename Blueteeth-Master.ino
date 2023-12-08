@@ -35,14 +35,8 @@ void a2dpSinkDataReceived(const uint8_t *data, uint32_t length){
   
   internalNetworkStack.recordDataBufferAccessTime();
 
-  for (int i = 0; i < length; i++){
-    internalNetworkStack.dataBuffer.push_back(data[i]);
-  }
-
-  if (streamActive == false){
-    vTaskResume(dataStreamPackagerTaskHandle);
-    streamActive = true;
-  }
+  internalNetworkStack.streamData(data, length);
+  
 }
 
 void read_data_stream(const uint8_t *data, uint32_t length) {
@@ -66,13 +60,6 @@ void setup() {
   
   //Setup Peripherals
   // pBLEScan = bleScanSetup();
-  
-  xTaskCreate(dataStreamPackagerTask, // Task function
-  "DATA STREAM PACKAGER", // Task name
-  4096, // Stack depth 
-  NULL, 
-  24, // Priority
-  &dataStreamPackagerTaskHandle); // Task handler
   
   //Create tasks
   xTaskCreate(terminalInputTask, // Task function
@@ -117,31 +104,6 @@ void ringTokenWatchdogTask(void * params) {
       internalNetworkStack.generateNewToken();
     }
     internalNetworkStack.resetTokenRxFlag(); 
-  }
-}
-
-void dataStreamPackagerTask(void * params) {
-
-  uint8_t tmp[MAX_DATA_PLANE_PAYLOAD_SIZE / PAYLOAD_SIZE * FRAME_SIZE]; //temporary storage
-  size_t dataLen;
-  size_t frameLen;
-
-  while (1){
-
-    if (internalNetworkStack.dataBuffer.size() < 512) { 
-      xSemaphoreGive(internalNetworkStack.dataBufferMutex); //give away mutex before suspending
-      streamActive = false;
-      vTaskSuspend(NULL);
-      xSemaphoreTake(internalNetworkStack.dataBufferMutex, portMAX_DELAY); //take it back after coming out of suspension
-    }
-
-    dataLen = min((internalNetworkStack.dataBuffer.size() / PAYLOAD_SIZE) * PAYLOAD_SIZE, (size_t) MAX_DATA_PLANE_PAYLOAD_SIZE); 
-    frameLen = ceil( (double) dataLen / PAYLOAD_SIZE * FRAME_SIZE);
-
-    packDataStream(tmp, dataLen, internalNetworkStack.dataBuffer);
-  
-    internalNetworkStack.streamData(tmp, frameLen); 
-
   }
 }
 
