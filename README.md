@@ -9,7 +9,7 @@ Arduino sketch for the Blueteeth master device
 
 >*Note: these files should be placed in your Arduino libraries directory*
 
-## Pin Information 
+## ESP32 Pin Locations 
 
 Below are the pins utilized on the Teyleten Robot ESP32-Wroom Dev. board (upper pins are TX & lower pins are RX).
 
