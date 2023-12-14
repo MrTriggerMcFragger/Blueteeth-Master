@@ -1,12 +1,15 @@
 # Blueteeth-Master
 Arduino sketch for the Blueteeth master device
 
-Libraries required:
+## Libraries
 
 1.) [ESP32 A2DP](https://github.com/pschatzmann/ESP32-A2DP)
 
 2.) [Blueteeth Internal Network Stack](https://github.com/MrTriggerMcFragger/Blueteeth-Internal-Network-Stack)
 
+>*Note: these files should be placed in your Arduino libraries directory*
+
+## Pin Information 
 
 Below are the pins utilized on the Teyleten Robot ESP32-Wroom Dev. board (upper pins are TX & lower pins are RX).
 
